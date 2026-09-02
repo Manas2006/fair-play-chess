@@ -26,7 +26,19 @@ function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
 }
 
 function BrandMark() {
-  return <div className="brand-mark" aria-hidden="true"><span>♞</span></div>;
+  return (
+    <div className="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="26" height="26" fill="#fff">
+        <rect x="7" y="3.5" width="2.4" height="4.5"/>
+        <rect x="10.8" y="3.5" width="2.4" height="4.5"/>
+        <rect x="14.6" y="3.5" width="2.4" height="4.5"/>
+        <rect x="7" y="6.5" width="10" height="2.5"/>
+        <rect x="8.5" y="9" width="7" height="8.5"/>
+        <rect x="6.5" y="17" width="11" height="2"/>
+        <rect x="5" y="19" width="14" height="2"/>
+      </svg>
+    </div>
+  );
 }
 
 function EvaluationBar({ centipawns }: { centipawns: number }) {
