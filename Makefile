@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: install demo api ui test build load-test
+.PHONY: install demo real api ui test build load-test
 
 install:
 	python3 -m venv .venv
@@ -9,6 +9,9 @@ install:
 
 demo:
 	.venv/bin/fairplay demo
+
+real:
+	STOCKFISH_PATH=$${STOCKFISH_PATH:-$$(command -v stockfish)} .venv/bin/fairplay real
 
 api:
 	.venv/bin/uvicorn fairplay.api:app --app-dir backend --reload --host 127.0.0.1 --port 8000

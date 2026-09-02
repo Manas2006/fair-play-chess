@@ -42,8 +42,10 @@ export interface ReviewCase {
   moves_analyzed: number;
   rating: number;
   dominant_speed: string;
-  synthetic_ground_truth: boolean;
-  assistance_rate: number;
+  synthetic_ground_truth?: boolean;
+  assistance_rate?: number;
+  proxy_label?: boolean;
+  label_source?: string;
   evidence: CaseEvidence;
   review: ReviewRecord | null;
 }

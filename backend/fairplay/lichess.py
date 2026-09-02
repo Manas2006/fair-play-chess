@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from io import TextIOWrapper
 import json
 from pathlib import Path
+import ssl
 import time
 from typing import Iterator, TextIO
 from urllib.error import HTTPError
@@ -13,11 +14,26 @@ import chess.pgn
 import zstandard as zstd
 
 
+def ssl_context() -> ssl.SSLContext:
+    """Default context, but fall back to certifi roots for Pythons without system CAs."""
+    try:
+        context = ssl.create_default_context()
+        if not context.get_ca_certs():
+            raise ssl.SSLError("no system CA certificates")
+        return context
+    except (ssl.SSLError, OSError):
+        import certifi
+
+        return ssl.create_default_context(cafile=certifi.where())
+
+
 @contextmanager
 def open_pgn_zst(path: Path) -> Iterator[TextIO]:
     """Stream a Lichess dump without expanding the archive on disk."""
     with path.open("rb") as compressed:
-        with zstd.ZstdDecompressor().stream_reader(compressed) as reader:
+        # Official dumps are compressed with a long window (--long=31).
+        decompressor = zstd.ZstdDecompressor(max_window_size=2**31)
+        with decompressor.stream_reader(compressed) as reader:
             with TextIOWrapper(reader, encoding="utf-8", errors="replace") as text_stream:
                 yield text_stream
 
@@ -74,7 +90,7 @@ class LichessPublicClient:
             headers["Authorization"] = f"Bearer {self.token}"
         request = Request("https://lichess.org/api/users", data=body, headers=headers, method="POST")
         try:
-            with urlopen(request, timeout=30) as response:
+            with urlopen(request, timeout=30, context=ssl_context()) as response:
                 payload = json.load(response)
         except HTTPError as exc:
             if exc.code == 429:
