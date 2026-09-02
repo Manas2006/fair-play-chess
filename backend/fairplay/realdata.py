@@ -42,22 +42,36 @@ def hash_account_id(username: str) -> str:
     return "acct_" + hashlib.sha256(f"fairplay-real-{username.lower()}".encode()).hexdigest()[:10]
 
 
-def download_slice(month: str, slice_mb: int, destination: Path) -> Path:
-    """Fetch only the first ``slice_mb`` MB of a monthly dump via an HTTP range request."""
+def download_slice(month: str, slice_mb: int, destination: Path, max_attempts: int = 30) -> Path:
+    """Fetch only the first ``slice_mb`` MB of a monthly dump via HTTP range requests.
+
+    Resumes from the partial file after connection stalls instead of restarting.
+    """
     target_bytes = slice_mb * 1024 * 1024
-    if destination.exists() and destination.stat().st_size >= target_bytes:
-        return destination
     destination.parent.mkdir(parents=True, exist_ok=True)
     url = DUMP_URL.format(month=month)
-    request = Request(url, headers={"Range": f"bytes=0-{target_bytes - 1}", "User-Agent": "fairplay-portfolio-research/0.1"})
-    written = 0
-    with urlopen(request, timeout=120, context=ssl_context()) as response, destination.open("wb") as output:
-        while chunk := response.read(1 << 20):
-            output.write(chunk)
-            written += len(chunk)
-    if written < target_bytes // 2:
-        raise RuntimeError(f"Slice download truncated: {written} bytes from {url}")
-    return destination
+    written = destination.stat().st_size if destination.exists() else 0
+    for attempt in range(max_attempts):
+        if written >= target_bytes:
+            return destination
+        request = Request(
+            url,
+            headers={
+                "Range": f"bytes={written}-{target_bytes - 1}",
+                "User-Agent": "fairplay-portfolio-research/0.1",
+            },
+        )
+        try:
+            with urlopen(request, timeout=60, context=ssl_context()) as response, destination.open("ab") as output:
+                while written < target_bytes and (chunk := response.read(1 << 20)):
+                    output.write(chunk)
+                    written += len(chunk)
+                    if written % (10 << 20) < (1 << 20):
+                        print(f"download: {written >> 20}/{slice_mb} MB")
+        except (TimeoutError, OSError) as exc:
+            print(f"download: retrying after {type(exc).__name__} at {written >> 20} MB")
+            time.sleep(min(30, 2 ** min(attempt, 5)))
+    raise RuntimeError(f"Slice download failed after {max_attempts} attempts: {written} bytes from {url}")
 
 
 def iter_raw_games(path: Path) -> Iterator[tuple[dict[str, str], str]]:

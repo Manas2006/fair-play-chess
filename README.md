@@ -77,7 +77,24 @@ It performs, with per-stage caching under `data/processed/real/`:
 5. Runs node-limited multi-PV Stockfish over the cohort's real games in parallel workers.
 6. Trains and calibrates the boosted model on real features, ranks the top-K, and writes `artifacts/` for the same API and UI (`data_mode: real_lichess_tos_proxy`).
 
-Account IDs are hashed in every artifact; the username map stays in git-ignored `data/processed/real/id_map_private.json`. See `fairplay real --help` for knobs (`--month`, `--slice-mb`, `--target-positives`, `--nodes`, ...). `make demo` still regenerates the synthetic benchmark, overwriting the same artifacts.
+Account IDs are hashed in every artifact; the username map stays in git-ignored `data/processed/real/id_map_private.json`. See `fairplay real --help` for knobs (`--month`, `--slice-mb`, `--target-positives`, `--nodes`, ...). `make demo` still regenerates the synthetic benchmark, overwriting the same artifacts. `bash scripts/real_progress.sh` renders a live per-stage progress bar while a run is in flight.
+
+### First real run (defaults, June 2025 slice)
+
+From 150 MB of the dump: 299,306 usable games across 148,790 players; 2,100 of the most
+active players labeled, yielding 42 `tosViolation` proxy positives matched with 126
+controls; 27,163 Stockfish move evaluations over 988 real games.
+
+| Metric | Synthetic demo | Real (proxy labels) |
+| --- | --- | --- |
+| ROC-AUC | ~0.99 | 0.60 |
+| Precision@25 (base rate 0.25) | ~1.0 | 0.32 |
+
+The collapse is the point: synthetic assistance is easy to detect by construction, while
+real proxy labels are noisy and six games per account carry little signal. Real accuracy
+must be earned with more evidence per account (`--slice-mb`, `--max-games-per-account`),
+not read off a synthetic benchmark. The pipeline exists so that scaling curve can be
+measured honestly.
 
 The dump notes that only a subset contains evaluations, while clock comments are available from April 2017 onward. Lower-level building blocks remain available. Stream a dump into inspectable game metadata:
 
