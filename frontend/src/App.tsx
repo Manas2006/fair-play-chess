@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { api } from "./api";
 import type { ReviewCase, ReviewDecision, Summary, TimelineMove } from "./types";
 
@@ -8,20 +9,24 @@ const PIECES: Record<string, string> = {
   k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟"
 };
 
-function Icon({ name, size = 18 }: { name: "queue" | "chart" | "settings" | "search" | "chevron" | "shield"; size?: number }) {
-  const paths = {
-    queue: <><path d="M4 5.5h16M4 12h16M4 18.5h16"/><circle cx="2" cy="5.5" r=".5"/><circle cx="2" cy="12" r=".5"/><circle cx="2" cy="18.5" r=".5"/></>,
+type IconName = "queue" | "chart" | "search" | "chevron" | "shield" | "check" | "flag" | "info";
+
+function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
+  const paths: Record<IconName, ReactNode> = {
+    queue: <><path d="M5 6h14M5 12h14M5 18h14"/><circle cx="2.5" cy="6" r=".5"/><circle cx="2.5" cy="12" r=".5"/><circle cx="2.5" cy="18" r=".5"/></>,
     chart: <><path d="M4 19V9m6 10V5m6 14v-7m4 7V3"/></>,
-    settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></>,
     search: <><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4 4"/></>,
     chevron: <path d="m9 18 6-6-6-6"/>,
-    shield: <path d="M12 2.5 20 6v5.5c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V6l8-3.5Z"/>
+    shield: <path d="M12 2.5 20 6v5.5c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V6l8-3.5Z"/>,
+    check: <path d="m5 12 4.2 4.2L19 6.5"/>,
+    flag: <><path d="M5 21V4"/><path d="M5 5h11l-2 3 2 3H5"/></>,
+    info: <><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></>
   };
-  return <svg className="icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
+  return <svg className="icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
 
 function BrandMark() {
-  return <div className="brand-mark" aria-hidden="true"><Icon name="shield" size={22}/><span>♞</span></div>;
+  return <div className="brand-mark" aria-hidden="true"><span>♞</span></div>;
 }
 
 function EvaluationBar({ centipawns }: { centipawns: number }) {
@@ -34,7 +39,7 @@ function EvaluationBar({ centipawns }: { centipawns: number }) {
         <div className="eval-white" style={{ height: `${whiteHeight}%` }} />
         <span className={whiteHeight > 56 ? "on-white" : "on-black"}>{label}</span>
       </div>
-      <small>Demo eval</small>
+      <small>Eval</small>
     </div>
   );
 }
@@ -76,18 +81,51 @@ function Chessboard({ move }: { move: TimelineMove }) {
   );
 }
 
+function leadingSignal(item: ReviewCase) {
+  const signals = [
+    { value: item.evidence.engine_match_rate, label: "High engine agreement" },
+    { value: item.evidence.hard_position_match_rate, label: "Strong in hard positions" },
+    { value: Math.max(0, 1 - item.evidence.median_cp_loss / 35), label: "Unusually low move loss" }
+  ];
+  return signals.sort((a, b) => b.value - a.value)[0].label;
+}
+
+function signalReasons(item: ReviewCase) {
+  return [
+    {
+      label: "Engine agreement",
+      value: percent(item.evidence.engine_match_rate),
+      detail: "Share of analyzed moves matching a reference engine choice.",
+      strength: item.evidence.engine_match_rate
+    },
+    {
+      label: "Move consistency",
+      value: `${item.evidence.median_cp_loss.toFixed(1)} CP`,
+      detail: "Median loss versus the reference move; lower is stronger.",
+      strength: Math.max(0, 1 - item.evidence.median_cp_loss / 35)
+    },
+    {
+      label: "Hard-position agreement",
+      value: percent(item.evidence.hard_position_match_rate),
+      detail: "Reference matches when the position has difficult alternatives.",
+      strength: item.evidence.hard_position_match_rate
+    }
+  ].sort((a, b) => b.strength - a.strength);
+}
+
 function Queue({ cases, selected, onSelect }: { cases: ReviewCase[]; selected?: string; onSelect: (item: ReviewCase) => void }) {
   return (
     <div className="case-list" aria-label="Review cases">
       {cases.map((item) => (
         <button type="button" className={`case-row ${selected === item.account_id ? "selected" : ""}`} key={item.account_id} onClick={() => onSelect(item)}>
-          <span className={`status-orb ${item.review?.decision ?? "pending"}`} />
+          <span className="case-rank">#{item.rank}</span>
           <span className="case-copy">
-            <span><strong>Case {String(item.rank).padStart(2, "0")}</strong><time>{item.dominant_speed}</time></span>
-            <small>{item.account_id}</small>
+            <span><strong>{item.account_id}</strong><time>{item.dominant_speed}</time></span>
+            <span className="case-signal">{leadingSignal(item)}</span>
             <span className="case-meta">{item.rating} rating · {item.games_analyzed} games</span>
           </span>
-          <span className={`risk-score ${item.confidence_band}`}>{Math.round(item.risk_score * 100)}</span>
+          <span className="risk-stack"><strong>{Math.round(item.risk_score * 100)}</strong><small>score</small></span>
+          <span className={`status-orb ${item.review?.decision ?? "pending"}`} />
           <Icon name="chevron" size={15}/>
         </button>
       ))}
@@ -101,39 +139,55 @@ function EvidenceBrowser({ moves }: { moves: TimelineMove[] }) {
   const move = moves[Math.min(index, Math.max(0, moves.length - 1))];
   if (!move) return <div className="empty-state">No position evidence is available.</div>;
   const choose = (next: number) => setIndex(Math.max(0, Math.min(moves.length - 1, next)));
+  const matched = move.engine_match;
   return (
     <section className="evidence-browser">
-      <div className="evidence-toolbar">
-        <div>
-          <span className="section-kicker">Position evidence</span>
-          <h3>{move.game_id} <span>· Ply {move.ply}</span></h3>
-        </div>
-        <div className="stepper" aria-label="Navigate evidence positions">
-          <button aria-label="Previous position" disabled={index === 0} onClick={() => choose(index - 1)}>‹</button>
-          <span>{index + 1} of {moves.length}</span>
-          <button aria-label="Next position" disabled={index === moves.length - 1} onClick={() => choose(index + 1)}>›</button>
-        </div>
-      </div>
       <div className="analysis-layout">
-        <Chessboard move={move} />
-        <div className="move-inspector">
-          <div className="move-summary">
+        <div className="board-column">
+          <div className="board-context"><span>Evidence position {index + 1}</span><strong>{move.game_id} · move {Math.ceil(move.ply / 2)}</strong></div>
+          <Chessboard move={move} />
+          <div className="board-caption"><Icon name="info" size={15}/><span>Yellow squares show the played move. Positive evaluation favors White.</span></div>
+        </div>
+
+        <div className="coach-panel">
+          <header className="coach-header">
+            <div className="coach-avatar">♞</div>
+            <div><span>Evidence guide</span><strong>{matched ? "This move matched the reference" : "This move differed from the reference"}</strong></div>
+          </header>
+
+          <div className={`classification ${matched ? "matched" : "different"}`}>
+            <span>{matched ? "✓" : "!"}</span>
+            <div><strong>{matched ? "Reference match" : "Different move"}</strong><small>{matched ? "One supporting signal—never proof on its own" : "A useful comparison point for the reviewer"}</small></div>
+          </div>
+
+          <div className="move-comparison">
             <div><span>Played</span><strong>{move.move_san || move.move}</strong><code>{move.move}</code></div>
-            <div><span>Reference move</span><strong>{move.best_move_san || move.best_move}</strong><code>{move.best_move}</code></div>
+            <div className="comparison-arrow">→</div>
+            <div><span>Reference</span><strong>{move.best_move_san || move.best_move}</strong><code>{move.best_move}</code></div>
           </div>
+
           <div className="signal-details">
-            <div><span>Centipawn loss</span><strong>{move.cp_loss.toFixed(1)}</strong></div>
-            <div><span>Think time</span><strong>{move.move_time_s.toFixed(1)}s</strong></div>
+            <div><span>Move loss</span><strong>{move.cp_loss.toFixed(1)} <small>CP</small></strong></div>
+            <div><span>Think time</span><strong>{move.move_time_s.toFixed(1)}<small>s</small></strong></div>
             <div><span>Complexity</span><strong>{percent(move.complexity, 0)}</strong></div>
-            <div><span>Reference match</span><strong>{move.engine_match ? "Matched" : "No"}</strong></div>
           </div>
-          <p className="analysis-note">The board shows the legal position after the played move. Positive values favor White. This demo uses a material-based evaluation; real runs use Stockfish.</p>
-          <div className="position-strip">
-            {moves.slice(0, 12).map((candidate, candidateIndex) => (
-              <button key={`${candidate.game_id}-${candidate.ply}`} className={candidateIndex === index ? "active" : ""} onClick={() => choose(candidateIndex)} aria-label={`Open ${candidate.game_id} ply ${candidate.ply}`}>
-                <span>{candidate.move_san || candidate.move}</span><small>{candidate.cp_loss.toFixed(0)} cp</small>
-              </button>
-            ))}
+
+          <div className="move-list-wrap">
+            <div className="move-list-title"><span>Strongest evidence positions</span><small>ranked by signal</small></div>
+            <div className="position-strip">
+              {moves.slice(0, 12).map((candidate, candidateIndex) => (
+                <button key={`${candidate.game_id}-${candidate.ply}`} className={candidateIndex === index ? "active" : ""} onClick={() => choose(candidateIndex)} aria-label={`Open ${candidate.game_id} ply ${candidate.ply}`}>
+                  <span>{candidateIndex + 1}</span><strong>{candidate.move_san || candidate.move}</strong><small>{candidate.cp_loss.toFixed(0)} cp</small>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="analysis-note"><Icon name="info" size={15}/><span>This synthetic demo uses material-based evaluation. Production runs use Stockfish multi-PV.</span></div>
+          <div className="stepper" aria-label="Navigate evidence positions">
+            <button disabled={index === 0} onClick={() => choose(index - 1)}>‹ Previous</button>
+            <span>{index + 1} of {moves.length}</span>
+            <button className="next" disabled={index === moves.length - 1} onClick={() => choose(index + 1)}>Next ›</button>
           </div>
         </div>
       </div>
@@ -143,9 +197,14 @@ function EvidenceBrowser({ moves }: { moves: TimelineMove[] }) {
 
 function CaseDetail({ item, onDecision }: { item: ReviewCase; onDecision: (decision: ReviewDecision, reason: string) => Promise<void> }) {
   const [reason, setReason] = useState("Evidence pattern merits a second independent review.");
+  const [decision, setDecision] = useState<ReviewDecision>("insufficient");
   const [saving, setSaving] = useState(false);
-  useEffect(() => setReason(item.review?.reason ?? "Evidence pattern merits a second independent review."), [item.account_id, item.review?.reason]);
-  const submit = async (decision: ReviewDecision) => {
+  const reasons = signalReasons(item);
+  useEffect(() => {
+    setReason(item.review?.reason ?? "Evidence pattern merits a second independent review.");
+    setDecision(item.review?.decision ?? "insufficient");
+  }, [item.account_id, item.review?.decision, item.review?.reason]);
+  const submit = async () => {
     setSaving(true);
     try { await onDecision(decision, reason); } finally { setSaving(false); }
   };
@@ -153,33 +212,47 @@ function CaseDetail({ item, onDecision }: { item: ReviewCase; onDecision: (decis
     <article className="case-detail">
       <header className="detail-header">
         <div>
-          <div className="breadcrumb">Review Queue <span>›</span> Case {String(item.rank).padStart(2, "0")}</div>
+          <div className="breadcrumb">Review queue <span>›</span> Case #{item.rank}</div>
           <h1>{item.account_id}</h1>
-          <p>Anonymized account snapshot · {item.moves_analyzed.toLocaleString()} analyzed decisions</p>
+          <p>{item.rating} rating · {item.games_analyzed} games · {item.moves_analyzed.toLocaleString()} analyzed moves</p>
         </div>
-        <div className="risk-summary"><span>Calibrated risk</span><strong>{Math.round(item.risk_score * 100)}%</strong><small>{item.confidence_band.replace("_", " ")} confidence</small></div>
+        <div className="risk-summary"><span>Queue score</span><strong>{Math.round(item.risk_score * 100)}</strong><small>{item.confidence_band.replace("_", " ")} confidence</small></div>
       </header>
 
-      <div className="human-banner"><Icon name="shield" size={20}/><div><strong>Human judgment required</strong><span>This score prioritizes review. It is not a finding of misconduct.</span></div></div>
+      <div className="human-banner">
+        <div className="banner-icon"><Icon name="shield" size={22}/></div>
+        <div><strong>This account was selected for human review—not enforcement</strong><span>The score ranks limited review capacity. Only a reviewer can clear, hold, or escalate the case.</span></div>
+        <span className="no-ban-badge">No automatic bans</span>
+      </div>
 
-      <section className="evidence-overview">
-        <div><span>Engine match</span><strong>{percent(item.evidence.engine_match_rate)}</strong><small>all analyzed moves</small></div>
-        <div><span>Median CP loss</span><strong>{item.evidence.median_cp_loss.toFixed(1)}</strong><small>lower is stronger</small></div>
-        <div><span>Hard-position match</span><strong>{percent(item.evidence.hard_position_match_rate)}</strong><small>complex decisions</small></div>
-        <div><span>Review state</span><strong className="capitalize">{item.review?.decision ?? "Pending"}</strong><small>{item.review ? "decision recorded" : "awaiting reviewer"}</small></div>
+      <section className="why-card">
+        <header><div><span className="section-kicker">Why this case is here</span><h2>The model found a repeated pattern across {item.moves_analyzed.toLocaleString()} moves</h2></div><span className="review-priority">Review priority #{item.rank}</span></header>
+        <div className="reason-grid">
+          {reasons.map((signal, signalIndex) => (
+            <div className={signalIndex === 0 ? "primary-signal" : ""} key={signal.label}>
+              <span>{signalIndex === 0 ? "Leading signal" : "Supporting signal"}</span>
+              <strong>{signal.label}<b>{signal.value}</b></strong>
+              <p>{signal.detail}</p>
+              <div className="signal-meter"><i style={{ width: `${Math.min(100, signal.strength * 100)}%` }}/></div>
+            </div>
+          ))}
+        </div>
+        <p className="risk-explainer"><Icon name="info" size={15}/><span>A queue score of {Math.round(item.risk_score * 100)} means this case ranks highly under the demo model. It does not mean there is a {Math.round(item.risk_score * 100)}% chance the player cheated.</span></p>
       </section>
 
+      <div className="section-heading"><div><span className="section-kicker">Inspect the moves</span><h2>Start with the strongest positions</h2></div><p>Compare the played move, reference move, evaluation, and timing context.</p></div>
       <EvidenceBrowser key={item.account_id} moves={item.evidence.timeline}/>
 
       <section className="decision-card">
-        <div className="decision-copy"><span className="section-kicker">Reviewer decision</span><h3>What does the evidence support?</h3></div>
-        <label htmlFor="review-note">Internal note</label>
-        <textarea id="review-note" value={reason} onChange={(event) => setReason(event.target.value)} rows={2}/>
-        <div className="review-actions">
-          <button disabled={saving || reason.length < 3} className="secondary-action clear" onClick={() => submit("clear")}>Clear case</button>
-          <button disabled={saving || reason.length < 3} className="secondary-action" onClick={() => submit("insufficient")}>Need more evidence</button>
-          <button disabled={saving || reason.length < 3} className="primary-action" onClick={() => submit("escalate")}>Escalate for review</button>
+        <div className="decision-copy"><span className="section-kicker">Record your judgment</span><h2>What should happen next?</h2><p>Choose one outcome, add an internal note, then save. This decision is auditable.</p></div>
+        <div className="decision-options" role="radiogroup" aria-label="Review decision">
+          <button className={decision === "clear" ? "selected clear" : ""} onClick={() => setDecision("clear")} role="radio" aria-checked={decision === "clear"}><span><Icon name="check"/></span><div><strong>Clear case</strong><small>Evidence does not justify further review</small></div></button>
+          <button className={decision === "insufficient" ? "selected hold" : ""} onClick={() => setDecision("insufficient")} role="radio" aria-checked={decision === "insufficient"}><span><Icon name="info"/></span><div><strong>Need more evidence</strong><small>Hold the case for more games or context</small></div></button>
+          <button className={decision === "escalate" ? "selected escalate" : ""} onClick={() => setDecision("escalate")} role="radio" aria-checked={decision === "escalate"}><span><Icon name="flag"/></span><div><strong>Escalate</strong><small>Send to a second independent reviewer</small></div></button>
         </div>
+        <label htmlFor="review-note">Internal review note</label>
+        <textarea id="review-note" value={reason} onChange={(event) => setReason(event.target.value)} rows={3}/>
+        <div className="save-row"><span><Icon name="shield" size={15}/> Human decision · logged for audit</span><button disabled={saving || reason.trim().length < 3} onClick={submit}>{saving ? "Saving…" : "Save review decision"}</button></div>
       </section>
     </article>
   );
@@ -198,7 +271,7 @@ export default function App() {
     setSummary(nextSummary); setCases(nextCases);
     setSelectedId((current) => current ?? nextCases[0]?.account_id);
   };
-  useEffect(() => { refresh().catch((reason: Error) => setError(reason.message)); }, []);
+  useEffect(() => { refresh().catch((failure: Error) => setError(failure.message)); }, []);
   const visibleCases = useMemo(() => cases.filter((item) => {
     const statusMatch = filter === "all" || (filter === "pending" ? !item.review : !!item.review);
     return statusMatch && item.account_id.toLowerCase().includes(query.toLowerCase());
@@ -211,38 +284,36 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <header className="window-bar">
-        <div className="traffic-lights" aria-hidden="true"><i/><i/><i/></div>
-        <div className="window-title"><BrandMark/><strong>FairPlay Review</strong><span>Research workspace</span></div>
-        <div className="window-actions"><span className="model-status"><i/> Demo model online</span><button className="avatar" aria-label="Reviewer profile">MP</button></div>
+      <header className="topbar">
+        <div className="brand"><BrandMark/><div><strong>FairPlay</strong><span>Human Review</span></div></div>
+        <div className="workflow" aria-label="Review workflow">
+          <div className="done"><span>1</span><div><strong>Scan games</strong><small>Model finds patterns</small></div></div><i>›</i>
+          <div className="done"><span>2</span><div><strong>Rank cases</strong><small>Top cases enter queue</small></div></div><i>›</i>
+          <div className="active"><span>3</span><div><strong>Review evidence</strong><small>People decide</small></div></div>
+        </div>
+        <div className="top-actions"><span className="demo-badge"><i/>Synthetic demo</span><button className="avatar" aria-label="Reviewer profile">MP</button></div>
       </header>
 
       <div className="app-body">
-        <aside className="sidebar">
-          <nav aria-label="Primary navigation">
-            <span className="nav-label">Workspace</span>
-            <button className="nav-item active"><Icon name="queue"/>Review queue<span>{cases.filter((item) => !item.review).length}</span></button>
-            <button className="nav-item"><Icon name="chart"/>Model health</button>
-            <span className="nav-label secondary">System</span>
-            <button className="nav-item"><Icon name="settings"/>Settings</button>
-          </nav>
-          <div className="sidebar-card">
-            <span>Today’s capacity</span><strong>{summary.reviewed} <small>of {summary.manifest.review_budget ?? 50}</small></strong>
-            <div><i style={{ width: `${Math.max(3, summary.reviewed / Math.max(1, summary.manifest.review_budget ?? 50) * 100)}%` }}/></div>
-            <p>The model routes cases.<br/>People make decisions.</p>
+        <aside className="queue-pane">
+          <header>
+            <div className="queue-title"><div><span className="eyebrow">Top-K selective review</span><h2>Review queue</h2></div><span className="pending-count">{cases.filter((item) => !item.review).length}</span></div>
+            <p>Highest-priority accounts appear first. A score ranks review order; it is not a verdict.</p>
+          </header>
+          <div className="queue-tools">
+            <div className="search-field"><Icon name="search" size={16}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search account ID" aria-label="Search account IDs"/></div>
+            <div className="segmented-control" role="group" aria-label="Filter queue">
+              {(["all", "pending", "reviewed"] as const).map((value) => <button key={value} className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{value}</button>)}
+            </div>
           </div>
-          <div className="data-label"><i/>Synthetic demonstration data</div>
-        </aside>
-
-        <section className="queue-pane">
-          <header><div><h2>Review Queue</h2><p>Highest-confidence cases first</p></div></header>
-          <div className="search-field"><Icon name="search" size={16}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search cases" aria-label="Search cases"/></div>
-          <div className="segmented-control" role="group" aria-label="Filter queue">
-            {(["all", "pending", "reviewed"] as const).map((value) => <button key={value} className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{value}</button>)}
-          </div>
-          <div className="queue-heading"><span>{visibleCases.length} cases</span><span>Risk</span></div>
+          <div className="queue-heading"><span>{visibleCases.length} cases</span><span>Score</span></div>
           <Queue cases={visibleCases} selected={selected?.account_id} onSelect={(item) => setSelectedId(item.account_id)}/>
-        </section>
+          <div className="capacity-card">
+            <div><span>Review capacity</span><strong>{summary.reviewed} / {summary.manifest.review_budget ?? 50}</strong></div>
+            <div className="capacity-meter"><i style={{ width: `${Math.max(3, summary.reviewed / Math.max(1, summary.manifest.review_budget ?? 50) * 100)}%` }}/></div>
+            <p>Only the configured top-K is routed to people.</p>
+          </div>
+        </aside>
 
         <main className="content-pane">
           {selected ? <CaseDetail item={selected} onDecision={decide}/> : <div className="empty-state">No cases match this filter.</div>}
