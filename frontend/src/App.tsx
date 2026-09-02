@@ -133,7 +133,7 @@ function Queue({ cases, selected, onSelect }: { cases: ReviewCase[]; selected?: 
   );
 }
 
-function EvidenceBrowser({ moves }: { moves: TimelineMove[] }) {
+function EvidenceBrowser({ moves, real }: { moves: TimelineMove[]; real?: boolean }) {
   const [index, setIndex] = useState(0);
   useEffect(() => setIndex(0), [moves]);
   const move = moves[Math.min(index, Math.max(0, moves.length - 1))];
@@ -183,7 +183,7 @@ function EvidenceBrowser({ moves }: { moves: TimelineMove[] }) {
             </div>
           </div>
 
-          <div className="analysis-note"><Icon name="info" size={15}/><span>This synthetic demo uses material-based evaluation. Production runs use Stockfish multi-PV.</span></div>
+          <div className="analysis-note"><Icon name="info" size={15}/><span>{real ? "Evaluations from node-limited Stockfish multi-PV analysis of real Lichess games." : "This synthetic demo uses material-based evaluation. Production runs use Stockfish multi-PV."}</span></div>
           <div className="stepper" aria-label="Navigate evidence positions">
             <button disabled={index === 0} onClick={() => choose(index - 1)}>‹ Previous</button>
             <span>{index + 1} of {moves.length}</span>
@@ -195,7 +195,7 @@ function EvidenceBrowser({ moves }: { moves: TimelineMove[] }) {
   );
 }
 
-function CaseDetail({ item, onDecision }: { item: ReviewCase; onDecision: (decision: ReviewDecision, reason: string) => Promise<void> }) {
+function CaseDetail({ item, real, onDecision }: { item: ReviewCase; real?: boolean; onDecision: (decision: ReviewDecision, reason: string) => Promise<void> }) {
   const [reason, setReason] = useState("Evidence pattern merits a second independent review.");
   const [decision, setDecision] = useState<ReviewDecision>("insufficient");
   const [saving, setSaving] = useState(false);
@@ -241,7 +241,7 @@ function CaseDetail({ item, onDecision }: { item: ReviewCase; onDecision: (decis
       </section>
 
       <div className="section-heading"><div><span className="section-kicker">Inspect the moves</span><h2>Start with the strongest positions</h2></div><p>Compare the played move, reference move, evaluation, and timing context.</p></div>
-      <EvidenceBrowser key={item.account_id} moves={item.evidence.timeline}/>
+      <EvidenceBrowser key={item.account_id} moves={item.evidence.timeline} real={real}/>
 
       <section className="decision-card">
         <div className="decision-copy"><span className="section-kicker">Record your judgment</span><h2>What should happen next?</h2><p>Choose one outcome, add an internal note, then save. This decision is auditable.</p></div>
@@ -291,7 +291,7 @@ export default function App() {
           <div className="done"><span>2</span><div><strong>Rank cases</strong><small>Top cases enter queue</small></div></div><i>›</i>
           <div className="active"><span>3</span><div><strong>Review evidence</strong><small>People decide</small></div></div>
         </div>
-        <div className="top-actions"><span className="demo-badge"><i/>Synthetic demo</span><button className="avatar" aria-label="Reviewer profile">MP</button></div>
+        <div className="top-actions"><span className="demo-badge"><i/>{summary.manifest.data_mode?.startsWith("real") ? "Real Lichess data" : "Synthetic demo"}</span><button className="avatar" aria-label="Reviewer profile">MP</button></div>
       </header>
 
       <div className="app-body">
@@ -316,7 +316,7 @@ export default function App() {
         </aside>
 
         <main className="content-pane">
-          {selected ? <CaseDetail item={selected} onDecision={decide}/> : <div className="empty-state">No cases match this filter.</div>}
+          {selected ? <CaseDetail item={selected} real={summary.manifest.data_mode?.startsWith("real")} onDecision={decide}/> : <div className="empty-state">No cases match this filter.</div>}
         </main>
       </div>
     </div>

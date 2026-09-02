@@ -2,7 +2,7 @@
 
 A human-in-the-loop chess fair-play system built as a **selective-prediction** problem. The model does not ban players. It converts move evidence into calibrated account risk, ranks the highest-risk accounts, and fills a fixed-capacity reviewer queue.
 
-The repository runs immediately on deterministic, anonymized synthetic evidence (`make demo`), and runs end-to-end on real Lichess data with `make real`: a streamed dump slice, public `tosViolation` proxy labels, and Stockfish move evidence feeding the same model, API, and UI.
+The system runs end-to-end on real Lichess data (`make real`): a streamed dump slice, public `tosViolation` proxy labels, and Stockfish move evidence feeding the model, API, and review UI. A deterministic synthetic benchmark (`make demo`) remains available for offline runs, tests, and injection-sensitivity analysis.
 
 ## What is implemented
 
@@ -37,12 +37,18 @@ Engine analysis is asynchronous and expensive; score serving over precomputed ac
 
 ## Quick start
 
-Requires Python 3.11+ and Node 20+.
+Requires Python 3.11+, Node 20+, and Stockfish (`brew install stockfish`).
 
 ```bash
 make install
-make demo
+make real
 ```
+
+`make real` builds the review queue from real Lichess data: it streams a slice of a
+monthly dump, fetches public `tosViolation` proxy labels, and extracts Stockfish move
+evidence (~30–45 minutes on first run; every stage is cached and resumable). No engine
+or network available? `make demo` generates an offline synthetic benchmark instead —
+it also drives the tests and the assistance-injection sensitivity analysis.
 
 Run the API and UI in separate terminals:
 
