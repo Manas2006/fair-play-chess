@@ -14,6 +14,7 @@ The repository runs immediately on deterministic, anonymized synthetic evidence.
 - Metrics appropriate to rare events: PR-AUC, Brier score, ECE, and recall at fixed FPR.
 - FastAPI service with persistent SQLite review decisions.
 - Responsive React/TypeScript review console with evidence timelines.
+- Replayable legal chess positions with SAN/UCI moves, square highlighting, move navigation, and a vertical evaluation bar.
 - Tests and an asynchronous API load-test harness.
 
 ## Architecture

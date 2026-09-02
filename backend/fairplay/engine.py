@@ -68,6 +68,9 @@ class StockfishAnalyzer:
                 )
                 best_score = infos[0]["score"].pov(board.turn).score(mate_score=100_000)
                 best_move = infos[0]["pv"][0]
+                fen_before = board.fen()
+                move_san = board.san(move)
+                best_move_san = board.san(best_move)
                 ranks = {info["pv"][0]: index + 1 for index, info in enumerate(infos) if info.get("pv")}
                 chosen_rank = ranks.get(move, self.config.multipv + 1)
                 chosen_info = next((info for info in infos if info.get("pv") and info["pv"][0] == move), None)
@@ -86,6 +89,8 @@ class StockfishAnalyzer:
                 complexity = min(1.0, 0.55 * legal_moves / 45 + 0.45 * max(0.0, 1 - score_gap / 120))
                 clock = node.clock()
                 move_time = 0.0 if previous_clock is None or clock is None else max(0.0, previous_clock + increment - clock)
+                after_board = board.copy(stack=False)
+                after_board.push(move)
                 yield MoveSignal(
                     account_id=account_id,
                     game_id=game_id,
@@ -95,7 +100,13 @@ class StockfishAnalyzer:
                     speed=speed,
                     phase=_phase(board),
                     move_uci=move.uci(),
+                    move_san=move_san,
                     best_move_uci=best_move.uci(),
+                    best_move_san=best_move_san,
+                    fen_before=fen_before,
+                    fen_after=after_board.fen(),
+                    eval_cp=float((chosen_score or 0) if player_color == chess.WHITE else -(chosen_score or 0)),
+                    player_color="white" if player_color == chess.WHITE else "black",
                     move_rank=chosen_rank,
                     cp_loss=cp_loss,
                     complexity=complexity,

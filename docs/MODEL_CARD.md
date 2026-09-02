@@ -11,6 +11,8 @@ Prioritize a bounded queue of chess accounts for trained human review. Scores ar
 
 The checked-in demo never touches real account labels. Generated artifacts are excluded from Git.
 
+Demo evidence includes legal, replayable FEN positions. Its evaluation bar uses a transparent material-based heuristic; real-data runs source evaluations from the configured Stockfish analyzer.
+
 ## Inputs
 
 Recent game windows with engine move rank, centipawn loss, position complexity, move time, clock state, rating, time control, and game chronology. Identity fields are excluded from model features.

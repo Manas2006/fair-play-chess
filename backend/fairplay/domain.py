@@ -14,7 +14,13 @@ class MoveSignal:
     speed: str
     phase: str
     move_uci: str
+    move_san: str
     best_move_uci: str
+    best_move_san: str
+    fen_before: str
+    fen_after: str
+    eval_cp: float
+    player_color: str
     move_rank: int
     cp_loss: float
     complexity: float

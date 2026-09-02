@@ -3,17 +3,62 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import hashlib
 
+import chess
 import numpy as np
 import pandas as pd
 
 
 SPEEDS = np.array(["blitz", "rapid", "classical"])
 PHASES = np.array(["opening", "middlegame", "endgame"])
-MOVE_POOL = np.array(["e2e4", "d2d4", "g1f3", "c2c4", "b1c3", "f1b5", "c1g5", "e1g1"])
+PIECE_VALUES = {
+    chess.PAWN: 1,
+    chess.KNIGHT: 3,
+    chess.BISHOP: 3,
+    chess.ROOK: 5,
+    chess.QUEEN: 9,
+    chess.KING: 0,
+}
 
 
 def _account_id(index: int) -> str:
     return "acct_" + hashlib.sha256(f"fairplay-demo-{index}".encode()).hexdigest()[:10]
+
+
+def _move_priority(board: chess.Board, move: chess.Move) -> float:
+    attacker = board.piece_at(move.from_square)
+    victim = board.piece_at(move.to_square)
+    capture_value = PIECE_VALUES.get(victim.piece_type, 1) if victim else (1 if board.is_en_passant(move) else 0)
+    attacker_value = PIECE_VALUES.get(attacker.piece_type, 0) if attacker else 0
+    file_index = chess.square_file(move.to_square)
+    rank_index = chess.square_rank(move.to_square)
+    center = 3.5 - (abs(file_index - 3.5) + abs(rank_index - 3.5)) / 2
+    return (
+        capture_value * 12
+        - attacker_value * 0.18
+        + (PIECE_VALUES.get(move.promotion, 0) * 9 if move.promotion else 0)
+        + (2.8 if board.gives_check(move) else 0)
+        + (1.2 if board.is_castling(move) else 0)
+        + center * 0.18
+    )
+
+
+def _ranked_moves(board: chess.Board, rng: np.random.Generator) -> list[chess.Move]:
+    legal = list(board.legal_moves)
+    return sorted(legal, key=lambda move: _move_priority(board, move) + float(rng.uniform(0, 0.16)), reverse=True)
+
+
+def _material_eval_cp(board: chess.Board, rng: np.random.Generator) -> float:
+    material = 0
+    for piece_type, value in PIECE_VALUES.items():
+        material += value * (len(board.pieces(piece_type, chess.WHITE)) - len(board.pieces(piece_type, chess.BLACK)))
+    return float(np.clip(material * 100 + rng.normal(0, 34), -1200, 1200))
+
+
+def _phase(board: chess.Board) -> str:
+    if board.fullmove_number <= 10:
+        return "opening"
+    pieces = sum(len(board.pieces(piece_type, color)) for piece_type in [chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT] for color in chess.COLORS)
+    return "endgame" if pieces <= 8 else "middlegame"
 
 
 def generate_synthetic_moves(
@@ -55,19 +100,26 @@ def generate_synthetic_moves(
         for game_index in range(games_per_account):
             game_id = f"g_{account_index:04d}_{game_index:02d}"
             played_at = start + timedelta(days=game_index * 4 + account_index % 31)
+            board = chess.Board()
             for move_index in range(moves_per_game):
-                ply = 2 * move_index + 1
-                phase = str(PHASES[min(2, move_index // max(1, moves_per_game // 3))])
+                if board.is_game_over():
+                    break
+                ply = board.ply() + 1
+                phase = _phase(board)
                 complexity = float(np.clip(rng.beta(2.2, 2.4), 0.03, 0.99))
                 injected = bool(is_assisted and rng.random() < assistance_rate and move_index >= 5)
 
                 human_match_probability = np.clip(0.16 + 0.36 * skill - 0.17 * complexity, 0.05, 0.64)
-                engine_match = bool(injected or rng.random() < human_match_probability)
+                ranked_moves = _ranked_moves(board, rng)
+                best_move = ranked_moves[0]
+                engine_match = bool(injected or rng.random() < human_match_probability or len(ranked_moves) == 1)
                 if engine_match:
                     move_rank = 1
                     cp_loss = float(abs(rng.normal(1.8 if injected else 5.5, 3.0)))
+                    chosen_move = best_move
                 else:
-                    move_rank = int(rng.choice([2, 3, 4, 5, 6], p=[0.28, 0.24, 0.20, 0.16, 0.12]))
+                    move_rank = int(min(len(ranked_moves), rng.choice([2, 3, 4, 5, 6], p=[0.28, 0.24, 0.20, 0.16, 0.12])))
+                    chosen_move = ranked_moves[move_rank - 1]
                     cp_loss = float(rng.gamma(2.1, 14 * (1.15 - 0.55 * skill)) * (0.75 + complexity))
 
                 base_time = {"blitz": 4.0, "rapid": 12.0, "classical": 34.0}[speed]
@@ -75,8 +127,13 @@ def generate_synthetic_moves(
                     move_time = float(np.clip(rng.normal(base_time * 0.72, base_time * 0.08), 0.3, None))
                 else:
                     move_time = float(np.clip(rng.lognormal(np.log(base_time * (0.55 + complexity)), 0.42), 0.3, None))
-                best_move = str(rng.choice(MOVE_POOL))
-                chosen_move = best_move if engine_match else str(rng.choice(MOVE_POOL[MOVE_POOL != best_move]))
+                fen_before = board.fen()
+                chosen_san = board.san(chosen_move)
+                best_san = board.san(best_move)
+                legal_moves = len(ranked_moves)
+                board.push(chosen_move)
+                fen_after = board.fen()
+                eval_cp = _material_eval_cp(board, rng)
                 move_rows.append(
                     {
                         "account_id": account_id,
@@ -86,16 +143,27 @@ def generate_synthetic_moves(
                         "rating": rating + int(rng.normal(0, 18)),
                         "speed": speed,
                         "phase": phase,
-                        "move_uci": chosen_move,
-                        "best_move_uci": best_move,
+                        "move_uci": chosen_move.uci(),
+                        "move_san": chosen_san,
+                        "best_move_uci": best_move.uci(),
+                        "best_move_san": best_san,
+                        "fen_before": fen_before,
+                        "fen_after": fen_after,
+                        "eval_cp": eval_cp,
+                        "player_color": "white",
                         "move_rank": move_rank,
                         "cp_loss": cp_loss,
                         "complexity": complexity,
                         "move_time_s": move_time,
                         "clock_s": max(0.0, base_time * 50 - move_index * move_time),
-                        "legal_moves": int(rng.integers(12, 42)),
+                        "legal_moves": legal_moves,
                         "engine_match": engine_match,
                         "injected": injected,
                     }
                 )
+                if board.is_game_over():
+                    break
+                opponent_moves = _ranked_moves(board, rng)
+                opponent_pool = opponent_moves[: min(8, len(opponent_moves))]
+                board.push(opponent_pool[int(rng.integers(0, len(opponent_pool)))])
     return pd.DataFrame(move_rows), pd.DataFrame(account_rows)

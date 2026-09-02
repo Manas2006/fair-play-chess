@@ -4,7 +4,13 @@ export interface TimelineMove {
   game_id: string;
   ply: number;
   move: string;
+  move_san: string;
   best_move: string;
+  best_move_san: string;
+  fen_before: string;
+  fen_after: string;
+  eval_cp: number;
+  player_color: "white" | "black";
   cp_loss: number;
   complexity: number;
   move_time_s: number;
